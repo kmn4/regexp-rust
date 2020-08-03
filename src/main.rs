@@ -1,4 +1,4 @@
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 enum Token {
     Char(char),
     Bar,
@@ -8,13 +8,13 @@ enum Token {
     EOL,
 }
 
-#[derive(Debug)]
-// Simple regular expressions.
-// Regular expressions (regexp) are built as follows:
-// (1) `empty`, `epsilon`, a single character are regexp
-// (2) If r1 and r2 are regexps, then
-//     a concatination `r1 r2`, disjunction `r1 | r2`,
-//     and star closure `r1*` are regexps.
+#[derive(Debug, PartialEq, Eq)]
+/// Simple regular expressions.
+/// Regular expressions (regexp) are built as follows:
+/// (1) "empty", "epsilon", a single character are regexp
+/// (2) If r1 and r2 are regexps, then
+///     a concatination "r1 r2", disjunction "r1 | r2",
+///     and star closure "r1*" are regexps.
 enum RegExp {
     Empty,
     Eps,
@@ -62,48 +62,33 @@ impl RegExp {
     }
 }
 
-impl PartialEq for RegExp {
-    fn eq(&self, other: &Self) -> bool {
-        use RegExp::*;
-        match (self, other) {
-            (Empty, Empty) | (Eps, Eps) => true,
-            (Char(c), Char(d)) if c == d => true,
-            (Or(r11, r12), Or(r21, r22)) if r11 == r21 && r12 == r22 => true,
-            (Cat(r11, r12), Cat(r21, r22)) if r11 == r21 && r12 == r22 => true,
-            (Star(r1), Star(r2)) if r1 == r2 => true,
-            _ => false,
-        }
-    }
-}
-impl Eq for RegExp {}
-
 // Only works on strings over ASCII characters
 struct Tokenizer {
-    input: String,
+    tokens: Vec<Token>,
+    idx: usize,
 }
 
 impl Tokenizer {
     fn with(input: String) -> Tokenizer {
-        let mut v = input.into_bytes();
-        v.reverse();
-        let rev = String::from_utf8(v);
-        if let Ok(rev) = rev {
-            Tokenizer { input: rev }
-        } else {
-            // TODO: Fail
-            Tokenizer {
-                input: String::from(""),
-            }
-        }
+        let tokens = input
+            .chars()
+            .map(|c| match c {
+                '|' => Token::Bar,
+                '*' => Token::Star,
+                '(' => Token::LPar,
+                ')' => Token::RPar,
+                c => Token::Char(c),
+            })
+            .collect();
+        Tokenizer { tokens, idx: 0 }
     }
     fn next(&mut self) -> Token {
-        match self.input.pop() {
-            None => Token::EOL,
-            Some('|') => Token::Bar,
-            Some('*') => Token::Star,
-            Some('(') => Token::LPar,
-            Some(')') => Token::RPar,
-            Some(c) => Token::Char(c),
+        if self.idx < self.tokens.len() {
+            let res = self.tokens[self.idx];
+            self.idx += 1;
+            res
+        } else {
+            Token::EOL
         }
     }
 }
@@ -228,7 +213,7 @@ fn parse_str_opt(s: &str) -> RegExp {
 
 use std::cell::RefCell;
 use std::rc::Rc;
-// Each tree in union-find data structures.
+/// Each tree in union-find data structures.
 #[derive(Debug)]
 struct UFTree<Q>
 where
@@ -262,12 +247,12 @@ where
         res
     }
 }
-// Data structure that can deal with equivalent classes.
-// It supports two operations `union` and `find`.
-// Each class is represented by a tree and two of that can be
-// merged to make a single class by `union` operation.
-// Given a element q, `find` finds the representative of
-// its equivalent class and returns it.
+/// Data structure that can deal with equivalent classes.
+/// It supports two operations `union` and `find`.
+/// Each class is represented by a tree and two of that can be
+/// merged to make a single class by `union` operation.
+/// Given a element q, `find` finds the representative of
+/// its equivalent class and returns it.
 #[derive(Debug)]
 struct UnionFind<Q>
 where
@@ -326,6 +311,7 @@ where
 }
 use std::collections::{HashMap, HashSet};
 #[derive(Debug)]
+/// Deterministic finite automata.
 struct DFA<Q>
 where
     Q: std::hash::Hash + Eq + Copy + Ord,
@@ -370,12 +356,14 @@ where
             trans,
         }
     }
-    // Two states p and q are "equivalent" when the following holds:
-    // for all string w, the DFA transitions to
-    // state s (resp. t) from p (resp. q) by w,
-    // then both of s and t are final state or not final state.
-    // This equivalence relation can be used to minimize
-    // the number of states of given DFA.
+    /// Returns DFA minimum with respect to the number of states.
+    ///
+    /// Two states p and q are "equivalent" when the following holds:
+    /// for all string w, the DFA transitions to
+    /// state s (resp. t) from p (resp. q) by w,
+    /// then both of s and t are final state or not final state.
+    /// This equivalence relation can be used to minimize
+    /// the number of states of given DFA.
     fn minimized(&self) -> DFA<Q> {
         // (1) Two states p and q are NOT equivalent in the above sense
         // if p is a final state and q is not.
@@ -446,6 +434,7 @@ where
 }
 
 #[derive(Debug)]
+/// Non-deterministic finite automata without epsilon transitions.
 struct NFA<Q> {
     alpha: Vec<char>,
     trans: HashMap<(Q, char), HashSet<Q>>,
@@ -457,10 +446,12 @@ impl<Q> NFA<Q>
 where
     Q: std::hash::Hash + Eq + Copy + Ord + Clone,
 {
-    // Convert NFA to DFA (subset construction).
+    /// Convert NFA to DFA (subset construction).
+    ///
+    /// New states are u32 integers.
+    /// These integers are chosen arbitrarily.
     fn to_dfa(&self) -> DFA<u32> {
         use std::collections::BTreeSet as BSet;
-        use std::iter::FromIterator;
         let mut i: u32 = 0;
         let mut fresh_state = move || {
             let j = i;
@@ -506,7 +497,7 @@ where
         // A new state (set of old states) is in new final states iff
         // its intersection with old final states is nonempty.
         let mut finals = HashSet::new();
-        let old_finals = BSet::from_iter(self.finals.clone().into_iter());
+        let old_finals = self.finals.clone().into_iter().collect();
         for (ss, &i) in new_states.iter() {
             let mut intersection = ss.intersection(&old_finals);
             if let Some(_) = intersection.next() {
@@ -522,6 +513,7 @@ where
 }
 
 #[derive(Debug)]
+/// Non-deterministic finite automata that can include epsilon transitions.
 struct ENFA<Q> {
     states: Vec<Q>,
     alpha: Vec<char>,
@@ -576,7 +568,7 @@ where
                 let mut dst = HashSet::new();
                 for r in rs.clone() {
                     if let Some(qs) = self.trans.get(&(r, Some(a))) {
-                        dst = dst.union(&qs).map(|q| q.clone()).collect();
+                        dst = dst.union(&qs).cloned().collect();
                     }
                 }
                 trans.insert((p, a), dst.clone());
@@ -586,8 +578,7 @@ where
         // there exists old final state q to which p can eps-transition.
         let mut finals = HashSet::new();
         for &p in &self.states {
-            let qs = eclos[&p].clone();
-            if let Some(_) = qs.intersection(&self.finals).next() {
+            if !eclos[&p].is_disjoint(&self.finals) {
                 finals.insert(p);
             }
         }
@@ -662,7 +653,7 @@ impl ENFA<()> {
                     };
                     let finals = {
                         let finals = n1.finals;
-                        let union = finals.union(&mut n2.finals);
+                        let union = finals.union(&n2.finals);
                         union.into_iter().map(|&p| p).collect()
                     };
                     let trans = {
@@ -833,6 +824,18 @@ fn main() {
         assert_eq!(u.find(1), u.find(2));
     }
 
+    fn print_regexp(s: &str) {
+        let re = parse_str_opt(s);
+        println!("Automata that accepts {:#?}", re);
+        let en = ENFA::from_regexp(&re);
+        println!("{:#?}", en);
+        let n = en.to_nfa();
+        println!("{:#?}", n);
+        let d = n.to_dfa();
+        println!("Before minimization: {:#?}", d);
+        let d = d.minimized();
+        println!("After minimization: {:#?}", d);
+    }
     {
         let re = parse_str_opt("a(b|c)*");
         println!("DFA that accepts a(b|c)*:");
@@ -840,5 +843,10 @@ fn main() {
         println!("Before minimization: {:#?}", d);
         let d = d.minimized();
         println!("After minimization: {:#?}", d);
+    }
+
+    {
+        print_regexp("a*b*");
+        print_regexp("😀");
     }
 }
