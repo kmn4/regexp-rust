@@ -227,24 +227,15 @@ impl<Q> UFTree<Q>
 where
     Q: std::cmp::Eq + std::hash::Hash,
 {
-    fn root(t: &Rc<RefCell<UFTree<Q>>>) -> Rc<RefCell<UFTree<Q>>> {
-        let mut res = Rc::clone(t);
-        loop {
-            let mut changed = false;
-            res = {
-                let r = res.borrow();
-                if let Some(ref s) = r.parent {
-                    changed = true;
-                    Rc::clone(s)
-                } else {
-                    Rc::clone(&res)
-                }
-            };
-            if !changed {
-                break;
-            }
+    fn find_root(t: &Rc<RefCell<UFTree<Q>>>) -> Rc<RefCell<UFTree<Q>>> {
+        let mut c = t.borrow_mut();
+        if let Some(t) = &c.parent {
+            let r = Self::find_root(t);
+            c.parent = Some(Rc::clone(&r));
+            r
+        } else {
+            Rc::clone(t)
         }
-        res
     }
 }
 /// Data structure that can deal with equivalent classes.
@@ -283,8 +274,7 @@ where
         UnionFind { m }
     }
     fn find_root(&self, q: Q) -> Rc<RefCell<UFTree<Q>>> {
-        let t = &self.m[&q];
-        UFTree::root(&t)
+        UFTree::find_root(&self.m[&q])
     }
     fn find(&self, q: Q) -> Q {
         let t = self.find_root(q);
