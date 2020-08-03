@@ -701,16 +701,16 @@ impl ENFA<()> {
                     let finals = n2.finals;
                     let trans = {
                         let i2 = n2.initial;
-                        let mut trans: HashMap<_, _> = n1
+                        let mut trans: HashMap<_, HashSet<_>> = n1
                             .finals
                             .iter()
                             .map(|&p| ((p, None), vec![i2].into_iter().collect()))
                             .collect();
                         for (k, v) in n1.trans {
-                            trans.insert(k, v);
+                            trans.entry(k).and_modify(|s| s.extend(&v)).or_insert(v);
                         }
                         for (k, v) in n2.trans {
-                            trans.insert(k, v);
+                            trans.entry(k).and_modify(|s| s.extend(&v)).or_insert(v);
                         }
                         trans
                     };
